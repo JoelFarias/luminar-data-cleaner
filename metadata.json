@@ -1,0 +1,5 @@
+
+{
+  "name": "Luminar Data Cleaner",
+  "description": "An intelligent web application for uploading, cleaning, analyzing, and visualizing spreadsheet data. Features include file type and encoding detection, options for handling problematic rows, standard and customizable dashboards, and AI-powered cleaning suggestions using Gemini API."
+}

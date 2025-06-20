@@ -1,0 +1,26 @@
+{
+  "name": "luminar-data-cleaner",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "papaparse": "^5.4.1",
+    "xlsx": "^0.18.5",
+    "chart.js": "^4.4.0",
+    "react-chartjs-2": "^5.2.0",
+    "lucide-react": "^0.263.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/papaparse": "^5.3.14",
+    "typescript": "~5.7.2",
+    "vite": "^6.2.0"
+  }
+}
