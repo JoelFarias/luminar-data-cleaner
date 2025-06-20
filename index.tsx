@@ -25,6 +25,14 @@ interface CleaningOptions {
   removeEmptyRows: boolean;
 }
 
+interface VisualizationOptions {
+  selectedColumns: string[];
+  chartType: 'bar' | 'line' | 'pie' | 'scatter';
+  groupBy?: string;
+  aggregationType: 'count' | 'sum' | 'avg' | 'min' | 'max';
+  showStatistics: boolean;
+}
+
 const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [fileType, setFileType] = useState<string | null>(null);
@@ -44,6 +52,16 @@ const App: React.FC = () => {
   });
   const [isDragOver, setIsDragOver] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [exploratoryAnalysis, setExploratoryAnalysis] = useState<any>(null);
+  const [selectedColumn, setSelectedColumn] = useState<string>('');
+  const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
+  const [visualizationOptions, setVisualizationOptions] = useState<VisualizationOptions>({
+    selectedColumns: [],
+    chartType: 'bar',
+    aggregationType: 'count',
+    showStatistics: true
+  });
+  const [showVisualization, setShowVisualization] = useState(false);
 
   const detectDataTypes = (data: any[], headers: string[]) => {
     const types: Record<string, string> = {};
@@ -176,6 +194,7 @@ const App: React.FC = () => {
               setData(cleanedData);
               setOriginalData([...cleanedData]);
               setFileStats(calculateStats(cleanedData, headerList));
+              setExploratoryAnalysis(performExploratoryAnalysis(cleanedData, headerList));
               setCurrentStep(3);
               setSuccess('Arquivo CSV processado com sucesso!');
             }
@@ -210,6 +229,7 @@ const App: React.FC = () => {
               setData(dataRows);
               setOriginalData([...dataRows]);
               setFileStats(calculateStats(dataRows, headerList));
+              setExploratoryAnalysis(performExploratoryAnalysis(dataRows, headerList));
               setCurrentStep(3);
               setSuccess('Arquivo Excel processado com sucesso!');
             } else {
@@ -372,6 +392,114 @@ const App: React.FC = () => {
         borderWidth: 0
       }]
     };
+  };
+
+  const performExploratoryAnalysis = (data: any[], headers: string[]) => {
+    const analysis: any = {
+      summary: {},
+      correlations: {},
+      distributions: {},
+      outliers: {},
+      nullValues: {},
+      uniqueValues: {}
+    };
+
+    headers.forEach(header => {
+      const values = data.map(row => row[header]).filter(val => val !== null && val !== undefined && val !== '');
+      const allValues = data.map(row => row[header]);
+      
+      // Contagem de valores nulos
+      analysis.nullValues[header] = allValues.length - values.length;
+      
+      // Valores únicos
+      analysis.uniqueValues[header] = new Set(values).size;
+      
+      // Se é numérico
+      const numericValues = values.filter(val => !isNaN(Number(val))).map(Number);
+      
+      if (numericValues.length > values.length * 0.8) { // Se 80% são numéricos
+        const sorted = numericValues.sort((a, b) => a - b);
+        const mean = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+        const median = sorted[Math.floor(sorted.length / 2)];
+        const min = Math.min(...numericValues);
+        const max = Math.max(...numericValues);
+        const std = Math.sqrt(numericValues.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / numericValues.length);
+        
+        // Quartis
+        const q1 = sorted[Math.floor(sorted.length * 0.25)];
+        const q3 = sorted[Math.floor(sorted.length * 0.75)];
+        const iqr = q3 - q1;
+        
+        // Outliers (método IQR)
+        const outlierThresholdLow = q1 - 1.5 * iqr;
+        const outlierThresholdHigh = q3 + 1.5 * iqr;
+        const outliers = numericValues.filter(val => val < outlierThresholdLow || val > outlierThresholdHigh);
+        
+        analysis.summary[header] = {
+          type: 'numeric',
+          count: numericValues.length,
+          mean: Number(mean.toFixed(2)),
+          median: Number(median.toFixed(2)),
+          std: Number(std.toFixed(2)),
+          min,
+          max,
+          q1,
+          q3,
+          iqr: Number(iqr.toFixed(2))
+        };
+        
+        analysis.outliers[header] = {
+          count: outliers.length,
+          percentage: Number(((outliers.length / numericValues.length) * 100).toFixed(1)),
+          values: outliers.slice(0, 10) // Primeiros 10 outliers
+        };
+        
+        // Distribuição (histograma)
+        const bins = 10;
+        const binSize = (max - min) / bins;
+        const distribution = Array(bins).fill(0);
+        numericValues.forEach(val => {
+          const binIndex = Math.min(Math.floor((val - min) / binSize), bins - 1);
+          distribution[binIndex]++;
+        });
+        
+        analysis.distributions[header] = {
+          bins: Array.from({length: bins}, (_, i) => ({
+            range: `${(min + i * binSize).toFixed(1)}-${(min + (i + 1) * binSize).toFixed(1)}`,
+            count: distribution[i]
+          }))
+        };
+      } else {
+        // Análise categórica
+        const frequency: Record<string, number> = {};
+        values.forEach(val => {
+          const key = String(val);
+          frequency[key] = (frequency[key] || 0) + 1;
+        });
+        
+        const sortedFreq = Object.entries(frequency)
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, 10); // Top 10 mais frequentes
+        
+        analysis.summary[header] = {
+          type: 'categorical',
+          count: values.length,
+          uniqueCount: Object.keys(frequency).length,
+          mostFrequent: sortedFreq[0]?.[0],
+          mostFrequentCount: sortedFreq[0]?.[1]
+        };
+        
+        analysis.distributions[header] = {
+          frequency: sortedFreq.map(([value, count]) => ({
+            value,
+            count,
+            percentage: Number(((count / values.length) * 100).toFixed(1))
+          }))
+        };
+      }
+    });
+    
+    return analysis;
   };
 
   return (
@@ -568,6 +696,188 @@ const App: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Exploratory Data Analysis */}
+        {exploratoryAnalysis && (
+          <div className="feature-card fade-in">
+            <div className="card-header">
+              <div className="step-number">3.5</div>
+              <div className="card-icon">
+                <BarChart3 className="w-6 h-6" />
+              </div>
+              <h2 className="card-title">Análise Exploratória dos Dados</h2>
+            </div>
+            
+            {/* Column Selector */}
+            <div className="form-group">
+              <label className="form-label">Selecione uma coluna para análise detalhada:</label>
+              <select
+                className="form-select"
+                value={selectedColumn}
+                onChange={(e) => setSelectedColumn(e.target.value)}
+              >
+                <option value="">Escolha uma coluna...</option>
+                {headers.map(header => (
+                  <option key={header} value={header}>{header}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Summary Statistics Grid */}
+            <div className="dashboard-grid">
+              {headers.slice(0, 4).map(header => {
+                const summary = exploratoryAnalysis.summary[header];
+                const nulls = exploratoryAnalysis.nullValues[header];
+                const unique = exploratoryAnalysis.uniqueValues[header];
+                
+                return (
+                  <div key={header} className="stat-card">
+                    <h4 style={{marginBottom: '1rem', color: 'var(--primary-color)'}}>{header}</h4>
+                    
+                    {summary?.type === 'numeric' ? (
+                      <>
+                        <div className="stat-value">{summary.mean}</div>
+                        <div className="stat-label">Média</div>
+                        <div style={{marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)'}}>
+                          Min: {summary.min} | Max: {summary.max}<br/>
+                          Mediana: {summary.median} | DP: {summary.std}<br/>
+                          Nulos: {nulls} | Únicos: {unique}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="stat-value">{unique}</div>
+                        <div className="stat-label">Valores Únicos</div>
+                        <div style={{marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)'}}>
+                          Total: {summary?.count || 0}<br/>
+                          Nulos: {nulls}<br/>
+                          Mais frequente: {summary?.mostFrequent || 'N/A'}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Detailed Analysis for Selected Column */}
+            {selectedColumn && exploratoryAnalysis.summary[selectedColumn] && (
+              <div className="chart-container">
+                <h3 className="chart-title">Análise Detalhada: {selectedColumn}</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Distribution Chart */}
+                  <div>
+                    <h4 style={{marginBottom: '1rem'}}>Distribuição</h4>
+                    {exploratoryAnalysis.summary[selectedColumn].type === 'numeric' ? (
+                      <Bar 
+                        data={{
+                          labels: exploratoryAnalysis.distributions[selectedColumn]?.bins?.map((bin: any) => bin.range) || [],
+                          datasets: [{
+                            label: 'Frequência',
+                            data: exploratoryAnalysis.distributions[selectedColumn]?.bins?.map((bin: any) => bin.count) || [],
+                            backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                          }]
+                        }}
+                        options={{
+                          responsive: true,
+                          plugins: {
+                            legend: { display: false }
+                          },
+                          scales: {
+                            y: { beginAtZero: true }
+                          }
+                        }}
+                      />
+                    ) : (
+                      <Bar 
+                        data={{
+                          labels: exploratoryAnalysis.distributions[selectedColumn]?.frequency?.map((item: any) => item.value) || [],
+                          datasets: [{
+                            label: 'Frequência',
+                            data: exploratoryAnalysis.distributions[selectedColumn]?.frequency?.map((item: any) => item.count) || [],
+                            backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                            borderColor: 'rgba(16, 185, 129, 1)',
+                            borderWidth: 1
+                          }]
+                        }}
+                        options={{
+                          responsive: true,
+                          plugins: {
+                            legend: { display: false }
+                          },
+                          scales: {
+                            y: { beginAtZero: true }
+                          }
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Detailed Statistics */}
+                  <div>
+                    <h4 style={{marginBottom: '1rem'}}>Estatísticas Detalhadas</h4>
+                    <div style={{background: '#f8fafc', padding: '1rem', borderRadius: '8px'}}>
+                      {exploratoryAnalysis.summary[selectedColumn].type === 'numeric' ? (
+                        <div style={{fontSize: '0.9rem', lineHeight: '1.6'}}>
+                          <div><strong>Estatísticas Descritivas:</strong></div>
+                          <div>• Média: {exploratoryAnalysis.summary[selectedColumn].mean}</div>
+                          <div>• Mediana: {exploratoryAnalysis.summary[selectedColumn].median}</div>
+                          <div>• Desvio Padrão: {exploratoryAnalysis.summary[selectedColumn].std}</div>
+                          <div>• Mínimo: {exploratoryAnalysis.summary[selectedColumn].min}</div>
+                          <div>• Máximo: {exploratoryAnalysis.summary[selectedColumn].max}</div>
+                          <div>• Q1: {exploratoryAnalysis.summary[selectedColumn].q1}</div>
+                          <div>• Q3: {exploratoryAnalysis.summary[selectedColumn].q3}</div>
+                          <div>• IQR: {exploratoryAnalysis.summary[selectedColumn].iqr}</div>
+                          
+                          <div style={{marginTop: '1rem'}}><strong>Qualidade dos Dados:</strong></div>
+                          <div>• Valores Nulos: {exploratoryAnalysis.nullValues[selectedColumn]}</div>
+                          <div>• Valores Únicos: {exploratoryAnalysis.uniqueValues[selectedColumn]}</div>
+                          <div>• Outliers: {exploratoryAnalysis.outliers[selectedColumn]?.count || 0} ({exploratoryAnalysis.outliers[selectedColumn]?.percentage || 0}%)</div>
+                        </div>
+                      ) : (
+                        <div style={{fontSize: '0.9rem', lineHeight: '1.6'}}>
+                          <div><strong>Análise Categórica:</strong></div>
+                          <div>• Total de registros: {exploratoryAnalysis.summary[selectedColumn].count}</div>
+                          <div>• Valores únicos: {exploratoryAnalysis.summary[selectedColumn].uniqueCount}</div>
+                          <div>• Valor mais frequente: {exploratoryAnalysis.summary[selectedColumn].mostFrequent}</div>
+                          <div>• Frequência máxima: {exploratoryAnalysis.summary[selectedColumn].mostFrequentCount}</div>
+                          <div>• Valores nulos: {exploratoryAnalysis.nullValues[selectedColumn]}</div>
+                          
+                          <div style={{marginTop: '1rem'}}><strong>Top 5 Valores:</strong></div>
+                          {exploratoryAnalysis.distributions[selectedColumn]?.frequency?.slice(0, 5).map((item: any, index: number) => (
+                            <div key={index}>• {item.value}: {item.count} ({item.percentage}%)</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Data Quality Insights */}
+                <div style={{marginTop: '2rem', padding: '1rem', background: '#f0f9ff', borderLeft: '4px solid var(--primary-color)', borderRadius: '0 8px 8px 0'}}>
+                  <h4 style={{margin: '0 0 0.5rem 0', color: 'var(--primary-color)'}}>💡 Insights de Qualidade</h4>
+                  <div style={{fontSize: '0.9rem', color: 'var(--text-secondary)'}}>
+                    {exploratoryAnalysis.nullValues[selectedColumn] > 0 && (
+                      <div>⚠️ Esta coluna possui {exploratoryAnalysis.nullValues[selectedColumn]} valores ausentes</div>
+                    )}
+                    {exploratoryAnalysis.summary[selectedColumn].type === 'numeric' && exploratoryAnalysis.outliers[selectedColumn]?.count > 0 && (
+                      <div>📊 Detectados {exploratoryAnalysis.outliers[selectedColumn].count} possíveis outliers ({exploratoryAnalysis.outliers[selectedColumn].percentage}%)</div>
+                    )}
+                    {exploratoryAnalysis.summary[selectedColumn].type === 'categorical' && exploratoryAnalysis.summary[selectedColumn].uniqueCount === exploratoryAnalysis.summary[selectedColumn].count && (
+                      <div>🔑 Esta coluna parece ser um identificador único (todos os valores são diferentes)</div>
+                    )}
+                    {exploratoryAnalysis.summary[selectedColumn].type === 'categorical' && exploratoryAnalysis.summary[selectedColumn].uniqueCount < 10 && (
+                      <div>📋 Esta coluna tem poucos valores únicos, ideal para categorização</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
