@@ -111,7 +111,7 @@ Este projeto está configurado para deploy automático no GitHub Pages. Veja o a
 ### URL do Projeto
 Após o deploy, o site estará disponível em:
 ```
-https://SEU_USUARIO.github.io/luminar-data-cleaner/
+https://JoelFarias.github.io/luminar-data-cleaner/
 ```
 
 ## 📄 Licença
