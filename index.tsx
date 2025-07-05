@@ -3,8 +3,8 @@ import ReactDOM from 'react-dom/client';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
-import { Bar, Line, Pie } from 'react-chartjs-2';
-import { Upload, FileText, Download, BarChart3, AlertCircle, CheckCircle, TrendingUp, Database, Filter, Sparkles } from 'lucide-react';
+import { Bar, Pie } from 'react-chartjs-2';
+import { Upload, FileText, Download, BarChart3, AlertCircle, CheckCircle, Filter, Sparkles } from 'lucide-react';
 
 // Register Chart.js components
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement);
@@ -23,14 +23,6 @@ interface CleaningOptions {
   customFillValue: string;
   trimWhitespace: boolean;
   removeEmptyRows: boolean;
-}
-
-interface VisualizationOptions {
-  selectedColumns: string[];
-  chartType: 'bar' | 'line' | 'pie' | 'scatter';
-  groupBy?: string;
-  aggregationType: 'count' | 'sum' | 'avg' | 'min' | 'max';
-  showStatistics: boolean;
 }
 
 const App: React.FC = () => {
@@ -54,14 +46,6 @@ const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [exploratoryAnalysis, setExploratoryAnalysis] = useState<any>(null);
   const [selectedColumn, setSelectedColumn] = useState<string>('');
-  const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
-  const [visualizationOptions, setVisualizationOptions] = useState<VisualizationOptions>({
-    selectedColumns: [],
-    chartType: 'bar',
-    aggregationType: 'count',
-    showStatistics: true
-  });
-  const [showVisualization, setShowVisualization] = useState(false);
 
   const detectDataTypes = (data: any[], headers: string[]) => {
     const types: Record<string, string> = {};
@@ -133,7 +117,7 @@ const App: React.FC = () => {
     
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (droppedFiles.length > 0) {
-      processSelectedFile(droppedFiles[0]);
+      processSelectedFile(droppedFiles[0] as File);
     }
   };
 
@@ -379,7 +363,7 @@ const App: React.FC = () => {
   const getChartData = () => {
     if (!fileStats) return null;
     
-    const typeCount = Object.values(fileStats.dataTypes).reduce((acc, type) => {
+    const typeCount = Object.values(fileStats.dataTypes).reduce((acc: Record<string, number>, type: string) => {
       acc[type] = (acc[type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
