@@ -46,8 +46,13 @@ const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [exploratoryAnalysis, setExploratoryAnalysis] = useState<any>(null);
   const [selectedColumn, setSelectedColumn] = useState<string>('');
+  const [progress, setProgress] = useState<{message: string, percentage: number}>({
+    message: '',
+    percentage: 0
+  });
 
-  const detectDataTypes = (data: any[], headers: string[]) => {
+  // Detecta os tipos de dados das colunas automaticamente
+  const detectarTiposDados = (data: any[], headers: string[]) => {
     const types: Record<string, string> = {};
     
     headers.forEach(header => {
@@ -73,7 +78,8 @@ const App: React.FC = () => {
     return types;
   };
 
-  const calculateStats = (data: any[], headers: string[]) => {
+  // Calcula estatísticas básicas do dataset
+  const calcularEstatisticas = (data: any[], headers: string[]) => {
     const totalRows = data.length;
     const totalColumns = headers.length;
     
@@ -86,11 +92,11 @@ const App: React.FC = () => {
       });
     });
     
-    // Simple duplicate detection based on JSON stringify
+    // Detecção simples de duplicatas baseada em JSON stringify
     const uniqueRows = new Set(data.map(row => JSON.stringify(row)));
     const duplicateRows = totalRows - uniqueRows.size;
     
-    const dataTypes = detectDataTypes(data, headers);
+    const dataTypes = detectarTiposDados(data, headers);
     
     return {
       totalRows,
@@ -101,34 +107,39 @@ const App: React.FC = () => {
     };
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  // Manipula o evento de arrastar sobre a área de upload
+  const manipularArrastarSobre = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  // Manipula o evento de arrastar para fora da área de upload
+  const manipularArrastarSair = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  // Manipula o evento de soltar arquivo na área de upload
+  const manipularSoltar = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
     
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (droppedFiles.length > 0) {
-      processSelectedFile(droppedFiles[0] as File);
+      processarArquivoSelecionado(droppedFiles[0] as File);
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Manipula mudança no input de arquivo
+  const manipularMudancaArquivo = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      processSelectedFile(selectedFile);
+      processarArquivoSelecionado(selectedFile);
     }
   };
 
-  const processSelectedFile = (selectedFile: File) => {
+  // Processa o arquivo selecionado pelo usuário
+  const processarArquivoSelecionado = (selectedFile: File) => {
     setFile(selectedFile);
     setError(null);
     setSuccess(null);
@@ -152,15 +163,19 @@ const App: React.FC = () => {
     }
   };
 
-  const processFile = useCallback(async () => {
+  // Processa o arquivo carregado (CSV ou Excel)
+  const processarArquivo = useCallback(async () => {
     if (!file) return;
 
     setIsLoading(true);
     setError(null);
+    setProgress({message: 'Iniciando processamento...', percentage: 10});
     
     try {
       if (fileType === 'CSV') {
+        setProgress({message: 'Lendo arquivo CSV...', percentage: 30});
         const text = await file.text();
+        setProgress({message: 'Analisando estrutura do CSV...', percentage: 50});
         Papa.parse(text, {
           header: true,
           skipEmptyLines: true,
@@ -171,15 +186,19 @@ const App: React.FC = () => {
               setData([]);
               setHeaders([]);
             } else {
+              setProgress({message: 'Processando dados...', percentage: 70});
               const cleanedData = results.data as any[];
               const headerList = results.meta.fields || [];
               
               setHeaders(headerList);
               setData(cleanedData);
               setOriginalData([...cleanedData]);
-              setFileStats(calculateStats(cleanedData, headerList));
-              setExploratoryAnalysis(performExploratoryAnalysis(cleanedData, headerList));
+              setProgress({message: 'Calculando estatísticas...', percentage: 85});
+              setFileStats(calcularEstatisticas(cleanedData, headerList));
+              setProgress({message: 'Realizando análise exploratória...', percentage: 95});
+              setExploratoryAnalysis(realizarAnaliseExploratoria(cleanedData, headerList));
               setCurrentStep(3);
+              setProgress({message: 'Concluído!', percentage: 100});
               setSuccess('Arquivo CSV processado com sucesso!');
             }
             setIsLoading(false);
@@ -187,12 +206,15 @@ const App: React.FC = () => {
           error: (err: any) => {
             setError(`Erro ao analisar CSV: ${err.message}`);
             setIsLoading(false);
+            setProgress({message: '', percentage: 0});
           }
         });
       } else if (fileType === 'Excel') {
+        setProgress({message: 'Lendo arquivo Excel...', percentage: 30});
         const reader = new FileReader();
         reader.onload = (e) => {
           try {
+            setProgress({message: 'Processando planilha Excel...', percentage: 50});
             const arrayBuffer = e.target?.result;
             const workbook = XLSX.read(arrayBuffer, { type: 'array' });
             const sheetName = workbook.SheetNames[0];
@@ -200,6 +222,7 @@ const App: React.FC = () => {
             const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
             
             if (jsonData.length > 0) {
+              setProgress({message: 'Organizando dados...', percentage: 70});
               const headerList = jsonData[0] as string[];
               const dataRows = jsonData.slice(1).map(rowArray => {
                 const rowObject: any = {};
@@ -212,9 +235,12 @@ const App: React.FC = () => {
               setHeaders(headerList);
               setData(dataRows);
               setOriginalData([...dataRows]);
-              setFileStats(calculateStats(dataRows, headerList));
-              setExploratoryAnalysis(performExploratoryAnalysis(dataRows, headerList));
+              setProgress({message: 'Calculando estatísticas...', percentage: 85});
+              setFileStats(calcularEstatisticas(dataRows, headerList));
+              setProgress({message: 'Realizando análise exploratória...', percentage: 95});
+              setExploratoryAnalysis(realizarAnaliseExploratoria(dataRows, headerList));
               setCurrentStep(3);
+              setProgress({message: 'Concluído!', percentage: 100});
               setSuccess('Arquivo Excel processado com sucesso!');
             } else {
               setError('Arquivo Excel está vazio ou não pôde ser lido.');
@@ -225,11 +251,13 @@ const App: React.FC = () => {
           } catch (err: any) {
             setError(`Erro ao analisar Excel: ${err.message}`);
             setIsLoading(false);
+            setProgress({message: '', percentage: 0});
           }
         };
         reader.onerror = () => {
           setError('Erro ao ler arquivo Excel.');
           setIsLoading(false);
+          setProgress({message: '', percentage: 0});
         };
         reader.readAsArrayBuffer(file);
       }
@@ -238,26 +266,31 @@ const App: React.FC = () => {
       setData([]);
       setHeaders([]);
       setIsLoading(false);
+      setProgress({message: '', percentage: 0});
     }
   }, [file, fileType]);
 
-  const cleanData = () => {
+  // Limpa os dados aplicando as opções selecionadas pelo usuário
+  const limparDados = () => {
     if (!originalData.length) return;
     
     setIsLoading(true);
+    setProgress({message: 'Iniciando limpeza dos dados...', percentage: 10});
     
     setTimeout(() => {
       let cleanedData = [...originalData];
       
-      // Remove empty rows
+      // Remove linhas vazias
       if (cleaningOptions.removeEmptyRows) {
+        setProgress({message: 'Removendo linhas vazias...', percentage: 25});
         cleanedData = cleanedData.filter(row => 
           headers.some(header => row[header] !== null && row[header] !== undefined && row[header] !== '')
         );
       }
       
-      // Trim whitespace
+      // Remove espaços em branco
       if (cleaningOptions.trimWhitespace) {
+        setProgress({message: 'Removendo espaços desnecessários...', percentage: 40});
         cleanedData = cleanedData.map(row => {
           const newRow: any = {};
           headers.forEach(header => {
@@ -268,8 +301,9 @@ const App: React.FC = () => {
         });
       }
       
-      // Remove duplicates
+      // Remove duplicatas
       if (cleaningOptions.removeDuplicates) {
+        setProgress({message: 'Identificando e removendo duplicatas...', percentage: 60});
         const seen = new Set();
         cleanedData = cleanedData.filter(row => {
           const key = JSON.stringify(row);
@@ -281,14 +315,15 @@ const App: React.FC = () => {
         });
       }
       
-      // Handle missing values
+      // Trata valores ausentes
       if (cleaningOptions.fillMissingValues !== 'keep') {
+        setProgress({message: 'Tratando valores ausentes...', percentage: 80});
         cleanedData = cleanedData.map(row => {
           const newRow = { ...row };
           headers.forEach(header => {
             if (newRow[header] === null || newRow[header] === undefined || newRow[header] === '') {
               if (cleaningOptions.fillMissingValues === 'remove') {
-                // Will be handled by filtering later
+                // Será tratado pela filtragem posterior
               } else if (cleaningOptions.fillMissingValues === 'custom') {
                 newRow[header] = cleaningOptions.customFillValue;
               } else if (cleaningOptions.fillMissingValues === 'mean') {
@@ -306,7 +341,7 @@ const App: React.FC = () => {
           return newRow;
         });
         
-        // Remove rows with missing values if option is selected
+        // Remove linhas com valores ausentes se a opção estiver selecionada
         if (cleaningOptions.fillMissingValues === 'remove') {
           cleanedData = cleanedData.filter(row =>
             headers.every(header => row[header] !== null && row[header] !== undefined && row[header] !== '')
@@ -314,15 +349,18 @@ const App: React.FC = () => {
         }
       }
       
+      setProgress({message: 'Finalizando limpeza...', percentage: 95});
       setData(cleanedData);
-      setFileStats(calculateStats(cleanedData, headers));
+      setFileStats(calcularEstatisticas(cleanedData, headers));
       setCurrentStep(4);
+      setProgress({message: 'Limpeza concluída!', percentage: 100});
       setSuccess(`Dados limpos com sucesso! ${originalData.length - cleanedData.length} linhas foram removidas/modificadas.`);
       setIsLoading(false);
     }, 1000);
   };
 
-  const downloadCleanedData = () => {
+  // Baixa os dados limpos como arquivo CSV
+  const baixarDadosLimpos = () => {
     if (!data.length) return;
     
     const csv = Papa.unparse(data);
@@ -342,7 +380,8 @@ const App: React.FC = () => {
     setSuccess('Arquivo baixado com sucesso!');
   };
 
-  const resetApp = () => {
+  // Reinicia a aplicação para o estado inicial
+  const reiniciarApp = () => {
     setFile(null);
     setFileType(null);
     setData([]);
@@ -352,15 +391,19 @@ const App: React.FC = () => {
     setSuccess(null);
     setFileStats(null);
     setCurrentStep(1);
+    setProgress({message: '', percentage: 0});
+    setExploratoryAnalysis(null);
+    setSelectedColumn('');
   };
 
   useEffect(() => {
     if (file && currentStep === 2) {
-      processFile();
+      processarArquivo();
     }
-  }, [file, processFile, currentStep]);
+  }, [file, processarArquivo, currentStep]);
 
-  const getChartData = () => {
+  // Obtém dados para gráficos de distribuição de tipos
+  const obterDadosGrafico = () => {
     if (!fileStats) return null;
     
     const typeCount = Object.values(fileStats.dataTypes).reduce((acc: Record<string, number>, type: string) => {
@@ -378,7 +421,8 @@ const App: React.FC = () => {
     };
   };
 
-  const performExploratoryAnalysis = (data: any[], headers: string[]) => {
+  // Realiza análise exploratória completa dos dados
+  const realizarAnaliseExploratoria = (data: any[], headers: string[]) => {
     const analysis: any = {
       summary: {},
       correlations: {},
@@ -520,15 +564,15 @@ const App: React.FC = () => {
           
           <div 
             className={`upload-zone ${isDragOver ? 'drag-over' : ''}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            onDragOver={manipularArrastarSobre}
+            onDragLeave={manipularArrastarSair}
+            onDrop={manipularSoltar}
           >
             <input
               type="file"
               className="file-input"
               accept=".csv,.xlsx,.xls"
-              onChange={handleFileChange}
+              onChange={manipularMudancaArquivo}
             />
             <Upload className="upload-icon" />
             <div className="upload-text">
@@ -557,12 +601,37 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* Loading State */}
+        {/* Loading State with Progress */}
         {isLoading && (
           <div className="feature-card fade-in">
             <div className="loading-container">
               <div className="spinner"></div>
-              <div className="loading-text">Processando seu arquivo...</div>
+              <div className="loading-text">{progress.message || 'Processando seu arquivo...'}</div>
+              <div className="progress-bar-container" style={{width: '100%', marginTop: '1rem'}}>
+                <div className="progress-bar" style={{
+                  width: '100%',
+                  height: '8px',
+                  backgroundColor: '#e5e7eb',
+                  borderRadius: '4px',
+                  overflow: 'hidden'
+                }}>
+                  <div className="progress-fill" style={{
+                    width: `${progress.percentage}%`,
+                    height: '100%',
+                    backgroundColor: '#3b82f6',
+                    transition: 'width 0.3s ease',
+                    borderRadius: '4px'
+                  }}></div>
+                </div>
+                <div className="progress-text" style={{
+                  textAlign: 'center',
+                  marginTop: '0.5rem',
+                  fontSize: '0.875rem',
+                  color: '#6b7280'
+                }}>
+                  {progress.percentage}%
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -663,10 +732,10 @@ const App: React.FC = () => {
             {/* Data Types Chart */}
             <div className="chart-container">
               <h3 className="chart-title">Distribuição de Tipos de Dados</h3>
-              {getChartData() && (
+              {obterDadosGrafico() && (
                 <div style={{ height: '300px', display: 'flex', justifyContent: 'center' }}>
                   <Pie 
-                    data={getChartData()!} 
+                    data={obterDadosGrafico()!} 
                     options={{ 
                       responsive: true, 
                       maintainAspectRatio: false,
@@ -878,7 +947,7 @@ const App: React.FC = () => {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="form-group">
-                <label className="form-label">
+                <label className="form-label" title="Remove linhas idênticas que aparecem múltiplas vezes no dataset">
                   <input
                     type="checkbox"
                     checked={cleaningOptions.removeDuplicates}
@@ -890,10 +959,13 @@ const App: React.FC = () => {
                   />
                   Remover linhas duplicadas
                 </label>
+                <div className="help-text">
+                  💡 Remove linhas que possuem valores idênticos em todas as colunas
+                </div>
               </div>
               
               <div className="form-group">
-                <label className="form-label">
+                <label className="form-label" title="Remove espaços desnecessários no início e fim dos textos">
                   <input
                     type="checkbox"
                     checked={cleaningOptions.trimWhitespace}
@@ -905,10 +977,13 @@ const App: React.FC = () => {
                   />
                   Remover espaços em branco
                 </label>
+                <div className="help-text">
+                  💡 Limpa espaços extras no início e fim dos valores de texto
+                </div>
               </div>
               
               <div className="form-group">
-                <label className="form-label">
+                <label className="form-label" title="Remove linhas que estão completamente vazias">
                   <input
                     type="checkbox"
                     checked={cleaningOptions.removeEmptyRows}
@@ -920,6 +995,9 @@ const App: React.FC = () => {
                   />
                   Remover linhas vazias
                 </label>
+                <div className="help-text">
+                  💡 Remove linhas que não possuem dados em nenhuma coluna
+                </div>
               </div>
               
               <div className="form-group">
@@ -954,11 +1032,11 @@ const App: React.FC = () => {
             </div>
             
             <div className="flex gap-4 mt-6">
-              <button className="btn btn-primary" onClick={cleanData}>
+              <button className="btn btn-primary" onClick={limparDados}>
                 <Filter className="w-4 h-4" />
                 Aplicar Limpeza
               </button>
-              <button className="btn btn-outline" onClick={resetApp}>
+              <button className="btn btn-outline" onClick={reiniciarApp}>
                 Novo Arquivo
               </button>
             </div>
@@ -980,7 +1058,7 @@ const App: React.FC = () => {
               Seus dados foram processados e estão prontos para download!
             </p>
             
-            <button className="btn btn-success" onClick={downloadCleanedData}>
+            <button className="btn btn-success" onClick={baixarDadosLimpos}>
               <Download className="w-4 h-4" />
               Baixar CSV Limpo
             </button>
